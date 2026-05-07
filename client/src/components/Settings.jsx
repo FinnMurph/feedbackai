@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { RefreshCw } from "lucide-react";
 import { api } from "../hooks/useApi";
 
 function Toggle({ on, onToggle, label }) {
@@ -12,13 +13,30 @@ function Toggle({ on, onToggle, label }) {
   );
 }
 
+function SkeletonToggle() {
+  return (
+    <div className="toggle-row" style={{ animation: "pulse 1.5s ease-in-out infinite" }}>
+      <div style={{ height: 12, background: "var(--color-border)", borderRadius: 6, width: 180 }} />
+      <div style={{ height: 22, width: 40, background: "var(--color-border)", borderRadius: 11 }} />
+    </div>
+  );
+}
+
 export default function Settings() {
   const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    api.getSettings().then(setSettings).catch(console.error);
-  }, []);
+  const fetchSettings = () => {
+    setLoading(true);
+    setError(null);
+    api.getSettings()
+      .then((d) => { setSettings(d); setLoading(false); })
+      .catch((e) => { setError(e.message); setLoading(false); });
+  };
+
+  useEffect(() => { fetchSettings(); }, []);
 
   const toggle = async (section, key) => {
     if (!settings) return;
@@ -37,10 +55,43 @@ export default function Settings() {
     }
   };
 
-  if (!settings) {
+  if (loading) {
     return (
-      <div className="settings" style={{ display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>
-        Loading settings...
+      <div className="settings">
+        <div style={{ marginBottom: 24 }}>
+          <h2 className="dashboard-title">Settings</h2>
+          <p className="dashboard-subtitle" style={{ marginBottom: 0 }}>Configure feedback types, guardrails, and system behavior.</p>
+        </div>
+        <div className="settings-section">
+          <div className="settings-section-title">Allowed Feedback Types</div>
+          <SkeletonToggle /><SkeletonToggle /><SkeletonToggle /><SkeletonToggle />
+        </div>
+        <div className="settings-section">
+          <div className="settings-section-title">Academic Integrity Guardrails</div>
+          <SkeletonToggle /><SkeletonToggle /><SkeletonToggle />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="settings" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, paddingTop: 80 }}>
+        <div style={{ fontSize: 32 }}>⚠️</div>
+        <div style={{ fontWeight: 600, color: "var(--color-text)" }}>Could not load settings</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-muted)", maxWidth: 340, textAlign: "center" }}>
+          Make sure the Flask server is running on port 5000. <code>python server/app.py</code>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", background: "var(--color-surface)", padding: "6px 12px", borderRadius: 6 }}>
+          {error}
+        </div>
+        <button
+          className="btn-secondary"
+          style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}
+          onClick={fetchSettings}
+        >
+          <RefreshCw size={13} /> Retry
+        </button>
       </div>
     );
   }
@@ -63,7 +114,6 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Feedback Types */}
       <div className="settings-section">
         <div className="settings-section-title">Allowed Feedback Types</div>
         <div className="settings-section-desc">Control which rubric areas students can receive feedback on.</div>
@@ -89,7 +139,6 @@ export default function Settings() {
         />
       </div>
 
-      {/* Guardrails */}
       <div className="settings-section">
         <div className="settings-section-title">Academic Integrity Guardrails</div>
         <div className="settings-section-desc">Enforce boundaries to prevent misuse and ensure ethical AI use.</div>
@@ -110,7 +159,6 @@ export default function Settings() {
         />
       </div>
 
-      {/* System Prompt */}
       <div className="settings-section">
         <div className="settings-section-title">System Prompt Preview</div>
         <div className="settings-section-desc">The active instructions sent to the AI before each student interaction.</div>

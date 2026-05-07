@@ -4,15 +4,21 @@ Provides chat, highlights, settings, and conversation log endpoints.
 Falls back to demo mode when ANTHROPIC_API_KEY is not set.
 """
 
-import os, uuid
+import os, uuid, json
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-from chat import get_chat_response, classify_message
+from dotenv import load_dotenv
+from chat import get_chat_response, stream_chat_response, classify_message
 from feedback import ESSAY_PARAGRAPHS, RUBRIC_AREAS
 
+load_dotenv()
+
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173", "http://localhost:3000"])
+_origins = ["http://localhost:5173", "http://localhost:3000", "http://localhost:5001"]
+if os.environ.get("FRONTEND_URL"):
+    _origins.append(os.environ["FRONTEND_URL"])
+CORS(app, origins=_origins)
 
 # ── In-Memory Storage ────────────────────────────────────────────────
 
@@ -48,14 +54,55 @@ def chat():
 
     response = get_chat_response(message, history, settings)
     category = classify_message(message)
+    now = datetime.now()
+    hour = now.strftime("%I").lstrip("0") or "12"
     log_entry = {
         "id": f"log-{uuid.uuid4().hex[:8]}", "student": "Finn Murphy",
-        "time": datetime.now().strftime("%-I:%M %p"), "rubric": response.get("rubric"),
+        "time": f"{hour}:{now.strftime('%M %p')}", "rubric": response.get("rubric"),
         "msg": message[:100], "flagged": category == "integrity", "resolved": False,
     }
     conversation_logs.insert(0, log_entry)
     stats["conversations_today"] += 1
     return jsonify(response)
+
+@app.route("/api/chat/stream", methods=["POST"])
+def chat_stream():
+    data = request.get_json()
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+
+    category = classify_message(message)
+    log_id = f"log-{uuid.uuid4().hex[:8]}"
+
+    def generate():
+        result = [None]
+        for chunk in stream_chat_response(message, history, settings):
+            yield chunk
+            if chunk.startswith("data: "):
+                try:
+                    event = json.loads(chunk[6:].strip())
+                    if event.get("done"):
+                        result[0] = event
+                except Exception:
+                    pass
+        if result[0]:
+            now = datetime.now()
+            hour = now.strftime("%I").lstrip("0") or "12"
+            log_entry = {
+                "id": log_id, "student": "Finn Murphy",
+                "time": f"{hour}:{now.strftime('%M %p')}", "rubric": result[0].get("rubric"),
+                "msg": message[:100], "flagged": category == "integrity", "resolved": False,
+            }
+            conversation_logs.insert(0, log_entry)
+            stats["conversations_today"] += 1
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @app.route("/api/highlights")
 def get_highlights():
@@ -90,7 +137,7 @@ def get_rubric():
     return jsonify({"areas": RUBRIC_AREAS})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5001))
     mode = "LIVE (Claude API)" if os.environ.get("ANTHROPIC_API_KEY") else "DEMO (simulated)"
     print(f"\n  🔵 FeedbackAI API → http://localhost:{port}\n  📡 Mode: {mode}\n")
     app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_ENV") == "development")

@@ -4,20 +4,57 @@ Handles Claude API calls with system prompt engineering.
 Falls back to curated demo responses when no API key is available.
 """
 
-import os, random
+import os, json, time
 
-SYSTEM_PROMPT = """You are a formative feedback assistant for university students working on writing assignments. Your role is to help students improve their writing through Socratic questioning.
+BASE_SYSTEM_PROMPT = """You are a formative feedback assistant for university students working on writing assignments. Your role is to help students improve their writing through Socratic questioning.
 
 RULES (strictly enforced):
-1. NEVER write complete sentences, paragraphs, or content for the student.
-2. Use the Socratic method: ask clarifying questions that guide the student to discover improvements themselves.
-3. Tag every response with the most relevant rubric criterion: Organization, Clarity, Evidence, or Critical Thinking.
-4. If a student asks you to write content, generate an answer, or do their work, politely decline and redirect with a guiding question. Flag the interaction.
-5. Keep responses concise (2-4 sentences) and actionable.
-6. Reference the assignment rubric criteria in your feedback.
+{rules}
 
 FORMAT your response as plain text. Start with your feedback/question, then on a new line write: [RUBRIC: CriterionName]
 If the student asked you to write content for them, add: [FLAGGED: integrity]"""
+
+BASE_RULES = [
+    "NEVER write complete sentences, paragraphs, or content for the student.",
+    "Use the Socratic method: ask clarifying questions that guide the student to discover improvements themselves.",
+    "Tag every response with the most relevant rubric criterion{criteria_note}.",
+    "If a student asks you to write content, generate an answer, or do their work, politely decline and redirect with a guiding question. Flag the interaction.",
+    "Keep responses concise (2-4 sentences) and actionable.",
+    "Reference the assignment rubric criteria in your feedback.",
+]
+
+OPEN_RULES = [
+    "Use the Socratic method: ask clarifying questions that guide the student to discover improvements themselves.",
+    "Tag every response with the most relevant rubric criterion{criteria_note}.",
+    "Keep responses concise (2-4 sentences) and actionable.",
+    "Reference the assignment rubric criteria in your feedback.",
+]
+
+
+def _build_system_prompt(settings):
+    """Build a system prompt that reflects current settings."""
+    guardrails = settings.get("guardrails", {})
+    feedback_types = settings.get("feedback_types", {})
+
+    key_map = {"organization": "Organization", "clarity": "Clarity",
+               "evidence": "Evidence", "critical_thinking": "Critical Thinking"}
+    active = [v for k, v in key_map.items() if feedback_types.get(k, True)]
+    disabled = [v for k, v in key_map.items() if not feedback_types.get(k, True)]
+
+    criteria_note = f" ({', '.join(active)})" if active else ""
+    disabled_note = f" Do NOT give feedback on: {', '.join(disabled)}." if disabled else ""
+
+    block_answers = guardrails.get("block_answers", True)
+    rule_set = BASE_RULES if block_answers else OPEN_RULES
+
+    rules_text = "\n".join(
+        f"{i+1}. {r.format(criteria_note=criteria_note)}"
+        for i, r in enumerate(rule_set)
+    )
+    if disabled_note:
+        rules_text += f"\n\nACTIVE CRITERIA NOTE:{disabled_note} Only tag with active criteria."
+
+    return BASE_SYSTEM_PROMPT.format(rules=rules_text)
 
 
 def classify_message(msg):
@@ -41,29 +78,91 @@ def classify_message(msg):
 def get_chat_response(message, history, settings):
     """Get a response from Claude API or demo fallback."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-
     if api_key:
-        return _call_claude(message, history, api_key)
+        return _call_claude(message, history, api_key, settings)
     else:
-        return _demo_response(message)
+        return _demo_response(message, settings)
 
 
-def _call_claude(message, history, api_key):
+def stream_chat_response(message, history, settings):
+    """Generator: yields SSE-formatted lines for streaming."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if api_key:
+        yield from _stream_claude(message, history, api_key, settings)
+    else:
+        yield from _stream_demo(message, settings)
+
+
+def _stream_claude(message, history, api_key, settings):
+    """Stream tokens from Claude via SSE."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        messages = []
+        for msg in history[-10:]:
+            messages.append({"role": msg["role"], "content": msg["text"]})
+        messages.append({"role": "user", "content": message})
+
+        full_text = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=300,
+            system=_build_system_prompt(settings),
+            messages=messages,
+        ) as stream:
+            for token in stream.text_stream:
+                full_text += token
+                yield f"data: {json.dumps({'token': token})}\n\n"
+
+        # Parse tags from full assembled text
+        rubric = None
+        flagged = False
+        clean = full_text
+        for area in ["Organization", "Clarity", "Evidence", "Critical Thinking"]:
+            tag = f"[RUBRIC: {area}]"
+            if tag in clean:
+                rubric = area
+                clean = clean.replace(tag, "").strip()
+                break
+        if "[FLAGGED: integrity]" in clean:
+            flagged = True
+            clean = clean.replace("[FLAGGED: integrity]", "").strip()
+
+        yield f"data: {json.dumps({'done': True, 'rubric': rubric, 'flagged': flagged, 'text': clean})}\n\n"
+
+    except Exception as e:
+        print(f"Claude streaming error: {e}")
+        yield from _stream_demo(message, settings)
+
+
+def _stream_demo(message, settings):
+    """Simulate streaming for demo mode by yielding words with a small delay."""
+    resp = _demo_response(message, settings)
+    text = resp["text"]
+    words = text.split(" ")
+    for i, word in enumerate(words):
+        token = word if i == len(words) - 1 else word + " "
+        yield f"data: {json.dumps({'token': token})}\n\n"
+        time.sleep(0.05)
+    yield f"data: {json.dumps({'done': True, 'rubric': resp.get('rubric'), 'flagged': resp.get('flagged', False), 'text': text})}\n\n"
+
+
+def _call_claude(message, history, api_key, settings):
     """Make a real API call to Claude."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        # Build message history
         messages = []
-        for msg in history[-10:]:  # Last 10 messages for context
+        for msg in history[-10:]:
             messages.append({"role": msg["role"], "content": msg["text"]})
         messages.append({"role": "user", "content": message})
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=300,
-            system=SYSTEM_PROMPT,
+            system=_build_system_prompt(settings),
             messages=messages,
         )
 
@@ -71,14 +170,12 @@ def _call_claude(message, history, api_key):
         rubric = None
         flagged = False
 
-        # Parse rubric tag
         for area in ["Organization", "Clarity", "Evidence", "Critical Thinking"]:
             if f"[RUBRIC: {area}]" in text:
                 rubric = area
                 text = text.replace(f"[RUBRIC: {area}]", "").strip()
                 break
 
-        # Parse flag
         if "[FLAGGED: integrity]" in text:
             flagged = True
             text = text.replace("[FLAGGED: integrity]", "").strip()
@@ -87,7 +184,7 @@ def _call_claude(message, history, api_key):
 
     except Exception as e:
         print(f"Claude API error: {e}")
-        return _demo_response(message)
+        return _demo_response(message, settings)
 
 
 # ── Demo Mode Responses ──────────────────────────────────────────────
@@ -125,11 +222,32 @@ DEMO_RESPONSES = {
     ],
 }
 
+_CATEGORY_TO_TYPE = {
+    "organization": "organization",
+    "clarity": "clarity",
+    "evidence": "evidence",
+    "critical": "critical_thinking",
+}
+
 _counters = {}
 
-def _demo_response(message):
-    """Return a varied demo response based on message classification."""
+
+def _demo_response(message, settings):
+    """Return a varied demo response based on message classification and active settings."""
+    feedback_types = settings.get("feedback_types", {})
+    guardrails = settings.get("guardrails", {})
+
     category = classify_message(message)
+
+    # Integrity: only block if guardrail is on
+    if category == "integrity" and not guardrails.get("block_answers", True):
+        category = "default"
+
+    # If the feedback type for this category is disabled, fall back to default
+    type_key = _CATEGORY_TO_TYPE.get(category)
+    if type_key and not feedback_types.get(type_key, True):
+        category = "default"
+
     bank = DEMO_RESPONSES.get(category, DEMO_RESPONSES["default"])
     idx = _counters.get(category, 0) % len(bank)
     _counters[category] = idx + 1

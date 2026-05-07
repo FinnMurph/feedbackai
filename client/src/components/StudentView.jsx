@@ -99,18 +99,41 @@ export default function StudentView() {
   const sendMessage = useCallback(async (text) => {
     if (!text.trim() || loading) return;
     const userMsg = { role: "user", text: text.trim() };
-    setMessages((prev) => [...prev, userMsg]);
+    const history = messages.map((m) => ({ role: m.role, text: m.text }));
+
+    setMessages((prev) => [...prev, userMsg, { role: "assistant", text: "", rubric: null, flagged: false, streaming: true }]);
     setInput("");
     setLoading(true);
 
     try {
-      const history = messages.map((m) => ({ role: m.role, text: m.text }));
-      const resp = await api.sendMessage(text.trim(), history);
-      const aiMsg = { role: "assistant", text: resp.text, rubric: resp.rubric, flagged: resp.flagged };
-      setMessages((prev) => [...prev, aiMsg]);
-      setLastRubric(resp.rubric);
+      await api.streamMessage(
+        text.trim(),
+        history,
+        (token) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = { ...next[next.length - 1] };
+            last.text += token;
+            next[next.length - 1] = last;
+            return next;
+          });
+        },
+        (done) => {
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = { ...next[next.length - 1], streaming: false, text: done.text, rubric: done.rubric, flagged: done.flagged };
+            next[next.length - 1] = last;
+            return next;
+          });
+          setLastRubric(done.rubric);
+        },
+      );
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "assistant", text: "Sorry, something went wrong. Please try again.", rubric: null, flagged: false }]);
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "assistant", text: "Sorry, something went wrong. Make sure the Flask server is running on port 5000.", rubric: null, flagged: false };
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -215,26 +238,20 @@ export default function StudentView() {
               <div key={i} className={`chat-message ${msg.role === "user" ? "user" : "ai"}`}>
                 {msg.role === "assistant" && <div className="chat-message-avatar">AI</div>}
                 <div className={`chat-bubble ${msg.role === "user" ? "user" : "ai"}`}>
-                  {msg.text}
-                  {msg.rubric && <div><RubricTag rubric={msg.rubric} /></div>}
-                  {msg.flagged && (
+                  {msg.streaming && msg.text === "" ? (
+                    <div className="typing-indicator">
+                      <div className="typing-dot" />
+                      <div className="typing-dot" />
+                      <div className="typing-dot" />
+                    </div>
+                  ) : msg.text}
+                  {!msg.streaming && msg.rubric && <div><RubricTag rubric={msg.rubric} /></div>}
+                  {!msg.streaming && msg.flagged && (
                     <div className="flag-notice">⚠ This interaction has been flagged for instructor review</div>
                   )}
                 </div>
               </div>
             ))}
-            {loading && (
-              <div className="chat-message ai">
-                <div className="chat-message-avatar">AI</div>
-                <div className="chat-bubble ai">
-                  <div className="typing-indicator">
-                    <div className="typing-dot" />
-                    <div className="typing-dot" />
-                    <div className="typing-dot" />
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={chatEndRef} />
           </div>
 

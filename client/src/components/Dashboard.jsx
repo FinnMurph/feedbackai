@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, MessageSquare, AlertTriangle, TrendingUp, Check, LayoutGrid, Type, BookMarked, Lightbulb } from "lucide-react";
+import { Users, MessageSquare, AlertTriangle, TrendingUp, Check, LayoutGrid, Type, BookMarked, Lightbulb, RefreshCw } from "lucide-react";
 import { api } from "../hooks/useApi";
 
 const RUBRIC_META = {
@@ -20,12 +20,41 @@ function RubricTag({ rubric }) {
   );
 }
 
+function SkeletonCard() {
+  return (
+    <div className="stat-card" style={{ animation: "pulse 1.5s ease-in-out infinite" }}>
+      <div style={{ height: 12, background: "var(--color-border)", borderRadius: 6, width: "60%", marginBottom: 12 }} />
+      <div style={{ height: 28, background: "var(--color-border)", borderRadius: 6, width: "40%", marginBottom: 8 }} />
+      <div style={{ height: 10, background: "var(--color-border)", borderRadius: 6, width: "50%" }} />
+    </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr style={{ animation: "pulse 1.5s ease-in-out infinite" }}>
+      {[80, 60, 200, 100, 70].map((w, i) => (
+        <td key={i}>
+          <div style={{ height: 12, background: "var(--color-border)", borderRadius: 4, width: w }} />
+        </td>
+      ))}
+      <td />
+    </tr>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    api.getLogs().then(setData).catch(console.error);
+    setLoading(true);
+    setError(null);
+    api.getLogs()
+      .then((d) => { setData(d); setLoading(false); })
+      .catch((e) => { setError(e.message); setLoading(false); });
   }, [refreshKey]);
 
   const handleResolve = async (id) => {
@@ -37,10 +66,58 @@ export default function Dashboard() {
     }
   };
 
-  if (!data) {
+  if (loading) {
     return (
-      <div className="dashboard" style={{ display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>
-        Loading dashboard...
+      <div className="dashboard">
+        <h2 className="dashboard-title">Instructor Dashboard</h2>
+        <p className="dashboard-subtitle">Monitor student usage, review flagged interactions, and track rubric engagement.</p>
+        <div className="stats-grid">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+        </div>
+        <div className="engagement-card">
+          <div className="engagement-title">Rubric Area Engagement</div>
+          <div className="engagement-bars">
+            {["Organization", "Clarity", "Evidence", "Critical Thinking"].map((k) => (
+              <div key={k} className="engagement-bar">
+                <div className="engagement-bar-header">
+                  <span className="engagement-bar-label" style={{ color: "var(--color-text-muted)" }}>{k}</span>
+                </div>
+                <div className="engagement-bar-track" style={{ animation: "pulse 1.5s ease-in-out infinite" }}>
+                  <div className="engagement-bar-fill" style={{ width: "40%", background: "var(--color-border)" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="log-card">
+          <div className="log-header"><span className="log-title">Conversation Log</span></div>
+          <table className="log-table">
+            <thead><tr><th>Student</th><th>Time</th><th>Message</th><th>Rubric Area</th><th>Status</th><th></th></tr></thead>
+            <tbody><SkeletonRow /><SkeletonRow /><SkeletonRow /></tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dashboard" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, paddingTop: 80 }}>
+        <div style={{ fontSize: 32 }}>⚠️</div>
+        <div style={{ fontWeight: 600, color: "var(--color-text)" }}>Could not load dashboard</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-muted)", maxWidth: 340, textAlign: "center" }}>
+          Make sure the Flask server is running on port 5000. <code>python server/app.py</code>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", background: "var(--color-surface)", padding: "6px 12px", borderRadius: 6 }}>
+          {error}
+        </div>
+        <button
+          className="btn-secondary"
+          style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}
+          onClick={() => setRefreshKey((k) => k + 1)}
+        >
+          <RefreshCw size={13} /> Retry
+        </button>
       </div>
     );
   }
@@ -60,7 +137,6 @@ export default function Dashboard() {
       <h2 className="dashboard-title">Instructor Dashboard</h2>
       <p className="dashboard-subtitle">Monitor student usage, review flagged interactions, and track rubric engagement.</p>
 
-      {/* Stats Grid */}
       <div className="stats-grid">
         {statCards.map((s, i) => (
           <div key={i} className="stat-card">
@@ -74,7 +150,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Rubric Engagement */}
       <div className="engagement-card">
         <div className="engagement-title">Rubric Area Engagement</div>
         <div className="engagement-bars">
@@ -95,7 +170,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Conversation Log */}
       <div className="log-card">
         <div className="log-header">
           <span className="log-title">Conversation Log</span>
