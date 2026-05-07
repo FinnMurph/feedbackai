@@ -131,7 +131,7 @@ export default function StudentView() {
     } catch (err) {
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: "Sorry, something went wrong. Make sure the Flask server is running on port 5000.", rubric: null, flagged: false };
+        next[next.length - 1] = { role: "assistant", text: "Sorry, something went wrong. The server may be starting up — please try again in a moment.", rubric: null, flagged: false };
         return next;
       });
     } finally {
