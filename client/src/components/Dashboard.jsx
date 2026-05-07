@@ -106,7 +106,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 32 }}>⚠️</div>
         <div style={{ fontWeight: 600, color: "var(--color-text)" }}>Could not load dashboard</div>
         <div style={{ fontSize: 13, color: "var(--color-text-muted)", maxWidth: 340, textAlign: "center" }}>
-          Make sure the Flask server is running on port 5000. <code>python server/app.py</code>
+          The server may be starting up — please try again in a moment.
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", background: "var(--color-surface)", padding: "6px 12px", borderRadius: 6 }}>
           {error}
