@@ -5,6 +5,7 @@
 FeedbackAI provides rubric-aligned, formative feedback for university writing courses while maintaining academic integrity through built-in guardrails and instructor oversight.
 
 NOTE: Allow 30-60s for cold start
+
 **[feedbackai-virid.vercel.app](https://feedbackai-virid.vercel.app/)**
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
