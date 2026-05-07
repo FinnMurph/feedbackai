@@ -4,6 +4,8 @@
 
 FeedbackAI provides rubric-aligned, formative feedback for university writing courses while maintaining academic integrity through built-in guardrails and instructor oversight.
 
+**[feedbackai-virid.vercel.app](https://feedbackai-virid.vercel.app/)**
+
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white)
 ![Claude API](https://img.shields.io/badge/Claude_API-Sonnet_4.6-6366F1?logo=anthropic&logoColor=white)
