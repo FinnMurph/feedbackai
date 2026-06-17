@@ -140,10 +140,10 @@ export default function Dashboard() {
       <div className="stats-grid">
         {statCards.map((s, i) => (
           <div key={i} className="stat-card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span className="stat-label">{s.label}</span>
-              <s.Icon size={16} color={s.color} style={{ opacity: 0.6 }} />
+            <div className="stat-icon-wrap" style={{ background: s.color + "18" }}>
+              <s.Icon size={18} color={s.color} />
             </div>
+            <span className="stat-label">{s.label}</span>
             <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
             <div className="stat-change">{s.change}</div>
           </div>
@@ -189,6 +189,13 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan={6}>
+                  <div className="log-empty">No conversations logged yet.</div>
+                </td>
+              </tr>
+            )}
             {logs.map((log) => (
               <tr key={log.id}>
                 <td className="student">{log.student}</td>

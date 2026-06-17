@@ -38,9 +38,10 @@ export default function App() {
               key={key}
               className={`nav-tab ${activeTab === key ? "active" : ""}`}
               onClick={() => setActiveTab(key)}
+              title={label}
             >
               <Icon size={15} />
-              {label}
+              <span>{label}</span>
             </button>
           ))}
         </nav>

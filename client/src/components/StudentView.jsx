@@ -46,12 +46,12 @@ function RubricModal({ areas, onClose }) {
           const rc = RUBRIC_COLORS[area.key] || {};
           const Icon = rc.icon || Sparkles;
           return (
-            <div key={area.key} className="rubric-card" style={{ background: rc.bg, border: `1.5px solid ${rc.color}20` }}>
+            <div key={area.key} className="rubric-card" style={{ borderLeftColor: rc.color }}>
               <div className="rubric-card-header">
                 <span className="rubric-card-name" style={{ color: rc.color }}>
                   <Icon size={16} /> {area.key}
                 </span>
-                <span className="rubric-card-weight" style={{ background: rc.bg, color: rc.color }}>
+                <span className="rubric-card-weight" style={{ background: rc.color + "14", color: rc.color }}>
                   {area.weight}%
                 </span>
               </div>
@@ -73,6 +73,7 @@ const ASSIGNMENTS = [
 
 /* ── Main Component ───────────────────────────────────────────── */
 export default function StudentView() {
+  const [activePanel, setActivePanel] = useState("document");
   const [messages, setMessages] = useState([
     { role: "assistant", text: "Hi Finn! I'm here to help you improve your essay. I've reviewed the rubric for this assignment. Would you like feedback on a specific section, or should I analyze what you have so far?", rubric: null, flagged: false },
   ]);
@@ -150,7 +151,19 @@ export default function StudentView() {
     <>
       {showRubric && <RubricModal areas={rubricAreas} onClose={() => setShowRubric(false)} />}
 
-      <div className="student-view">
+      <div className="mobile-panel-tabs">
+        {[["sidebar", "Assignments"], ["document", "Essay"], ["chat", "Chat"]].map(([panel, label]) => (
+          <button
+            key={panel}
+            className={`mobile-panel-tab ${activePanel === panel ? "active" : ""}`}
+            onClick={() => setActivePanel(panel)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="student-view" data-panel={activePanel}>
         {/* ── Left Sidebar ── */}
         <div className="sidebar">
           <div className="sidebar-label">My Assignments</div>
